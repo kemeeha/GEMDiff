@@ -1,0 +1,45 @@
+Download GEMs
+Transpose the GEMs
+Split GEMs into test and train sets
+Convert GEMS to tab-delimited format
+Make  group label files (BLCA,BRCA)
+Draw a histogram of all GEMs
+### prepare_GEM_data.py
+import os
+import gzip
+import shutil
+import pandas as pd
+import scanpy as sc
+from pathlib import Path
+
+# Define the data directory (relative to current location)
+data_dir = Path('./GSE198791_RAW')
+output_file = 'combined_data.h5ad'
+
+# Step 1: Decompress .gz files
+print("Decompressing .gz files...")
+for gz_file in data_dir.glob("*.gz"):
+    out_file = gz_file.with_suffix('')  # remove .gz extension
+    with gzip.open(gz_file, 'rb') as f_in, open(out_file, 'wb') as f_out:
+        shutil.copyfileobj(f_in, f_out)
+
+print("Decompression complete.")
+
+# Step 2: Read and merge all GEM files
+print("Reading and combining GEM files...")
+
+adatas = []
+for tsv_file in data_dir.glob("*.tsv"):
+    df = pd.read_csv(tsv_file, sep='\t', index_col=0)
+    sample_name = tsv_file.stem.split('_')[0]
+    df.columns = [f"{sample_name}_{col}" for col in df.columns]  # tag barcodes with sample
+    adata = sc.AnnData(df.transpose())
+    adata.obs['sample'] = sample_name
+    adatas.append(adata)
+
+# Step 3: Concatenate all samples
+combined = adatas[0].concatenate(adatas[1:], join='outer', batch_key='sample_id', index_unique=None)
+
+# Step 4: Save as .h5ad file
+combined.write(output_file)
+print(f"Combined data saved to {output_file}")
